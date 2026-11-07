@@ -553,7 +553,7 @@ async function buildPostFields(key) {
     conditions: [
       { bucket: CONFIG.oss.bucket },
       ["starts-with", "$key", CONFIG.oss.dir],
-      ["content-length-range", 1, 500 * 1024 * 1024]
+      ["content-length-range", 1, 3 * 1024 * 1024 * 1024]
     ]
   }));
   return {
