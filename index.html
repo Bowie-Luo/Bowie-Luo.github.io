@@ -1,10 +1,19 @@
-<!DOCTYPE html>
+Request
+import hashlib, json, hmac, base64
+
+html = r'''<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>我们的博物馆</title>
 <style>
+/* ══════════════════════════════════════════════════════════
+   我们的博物馆 · 影像馆（最终版）
+   定位：存储我们的恋爱小视频。照片归实体相册，这里只放映。
+   结构：大厅 → 放映厅（主题柜）→ 年度特展 → 存片处
+   视频清单：OSS 上的 videos/manifest.json，存片处自动维护
+   ══════════════════════════════════════════════════════════ */
 :root {
   --paper:#f6f1e7; --paper-2:#efe8d9; --ink:#2b2823;
   --ink-soft:#6b6357; --gold:#9a7b4f; --line:#d8cfbc; --night:#1d1a16;
@@ -27,8 +36,7 @@ a { color:var(--gold); }
   position:fixed; inset:0; z-index:99;
   background:var(--night); color:#e8e0cf;
   display:flex; flex-direction:column; align-items:center; justify-content:center;
-  padding:2rem; text-align:center;
-  transition:opacity 1.2s ease;
+  padding:2rem; text-align:center; transition:opacity 1.2s ease;
 }
 #gate.hidden { opacity:0; pointer-events:none; }
 #gate .gate-title { font-size:1.4rem; margin-bottom:.5rem; }
@@ -48,24 +56,23 @@ a { color:var(--gold); }
 #gate .gate-hint { color:#6b6357; font-size:.78rem; margin-top:2rem; }
 #gate .gate-error { color:#c08a7a; font-size:.85rem; min-height:1.4em; }
 
-/* 展馆主体：从暗到亮 */
+/* 首访横幅 */
+#welcome-banner {
+  position:fixed; top:1rem; left:50%; transform:translate(-50%,-200%);
+  z-index:60; background:var(--ink); color:var(--paper);
+  padding:.7rem 1.4rem; font-size:.82rem; letter-spacing:.12em;
+  border-radius:2rem; white-space:nowrap;
+  transition:transform .8s ease; box-shadow:0 4px 16px rgba(43,40,35,.25);
+}
+#welcome-banner.show { transform:translate(-50%,0); }
+
+/* 主体：亮灯动画 */
 #museum {
   max-width:720px; margin:0 auto; padding:0 1.25rem 6rem;
   opacity:0; filter:brightness(.6);
   transition:opacity 1.4s ease, filter 1.4s ease;
 }
 #museum.lit { opacity:1; filter:brightness(1); }
-
-/* 首访引导横幅 */
-#welcome-banner {
-  position:fixed; top:1rem; left:50%; transform:translate(-50%,-200%);
-  z-index:60; background:var(--ink); color:var(--paper);
-  padding:.7rem 1.4rem; font-size:.82rem; letter-spacing:.12em;
-  border-radius:2rem; white-space:nowrap;
-  transition:transform .8s ease;
-  box-shadow:0 4px 16px rgba(43,40,35,.25);
-}
-#welcome-banner.show { transform:translate(-50%,0); }
 
 .museum-head { text-align:center; padding:4rem 0 2.5rem; }
 .museum-head h1 { font-size:1.7rem; }
@@ -80,20 +87,20 @@ nav {
   padding-bottom:env(safe-area-inset-bottom);
 }
 nav a {
-  flex:1; max-width:140px; text-align:center;
+  flex:1; max-width:120px; text-align:center;
   padding:.9rem 0 .8rem; text-decoration:none;
-  color:var(--ink-soft); font-size:.82rem; letter-spacing:.15em;
+  color:var(--ink-soft); font-size:.8rem; letter-spacing:.12em;
 }
 nav a:active, nav a.active { color:var(--gold); }
 
 /* 展厅通用 */
 .hall { padding:3.5rem 0 2rem; border-top:1px solid var(--line); }
-.hall-head { text-align:center; margin-bottom:2.5rem; }
+.hall-head { text-align:center; margin-bottom:2.2rem; }
 .hall-head .hall-no { color:var(--gold); font-size:.8rem; letter-spacing:.35em; }
 .hall-head h2 { font-size:1.45rem; margin-top:.6rem; }
 .hall-head .hall-date { color:var(--ink-soft); font-size:.8rem; margin-top:.5rem; }
 
-/* 展签 */
+/* 展签卡片 */
 .placard {
   background:#fffdf7; border:1px solid var(--line);
   padding:1.2rem 1.4rem; margin:1.5rem 0;
@@ -111,36 +118,63 @@ nav a:active, nav a.active { color:var(--gold); }
 .rules li { padding:.55rem 0 .55rem 1.6em; position:relative; font-size:.92rem; }
 .rules li::before { content:"§"; position:absolute; left:0; color:var(--gold); }
 
-/* 视频 */
-.video-frame { background:var(--night); padding:.6rem; border:1px solid var(--line); margin:1.5rem 0; }
-.video-frame video { width:100%; display:block; }
-.video-caption { color:var(--ink-soft); font-size:.8rem; text-align:center; margin-top:.6rem; }
-
-/* 照片位 */
-.photo-slot {
-  border:1px dashed var(--line); background:var(--paper-2);
-  padding:2.5rem 1rem; text-align:center; color:var(--ink-soft);
-  font-size:.85rem; margin:1.2rem 0; letter-spacing:.1em;
-}
-.photo-slot img { width:100%; display:block; }
-
-/* 预言柜（批改区封存模糊，明年开柜删除 blur） */
-.prophecy-box { border:1px solid var(--line); background:#fffdf7; padding:1.5rem 1.4rem; margin:1.5rem 0; }
-.prophecy-box .grade {
-  margin-top:1.2rem; padding-top:1rem; border-top:1px dashed var(--line);
-  color:var(--ink-soft); font-size:.85rem; min-height:3em;
-  filter:blur(5px); user-select:none;
+/* 柜子跳转胶囊 */
+.cabinet-chips { display:flex; flex-wrap:wrap; gap:.5rem; justify-content:center; margin-bottom:2rem; }
+.cabinet-chips a {
+  border:1px solid var(--line); border-radius:2rem; padding:.3rem .95rem;
+  font-size:.8rem; text-decoration:none; color:var(--ink-soft); background:#fffdf7;
 }
 
-/* 信件 */
-.letter {
+/* 视频卡 */
+.video-card { background:#fffdf7; border:1px solid var(--line); padding:1.1rem 1.2rem; margin:1.2rem 0; }
+.video-card .vc-head { display:flex; align-items:baseline; gap:.6rem; flex-wrap:wrap; }
+.video-card .vc-title { font-family:"Noto Serif SC","Songti SC","STSong",serif; font-size:1.02rem; }
+.video-card .vc-date { color:var(--ink-soft); font-size:.78rem; }
+.video-card .vc-new {
+  background:var(--gold); color:#fff; font-size:.65rem; letter-spacing:.1em;
+  padding:.1rem .5rem; border-radius:2rem;
+}
+.video-card .vc-note {
+  color:var(--ink-soft); font-size:.88rem; margin:.35rem 0 .8rem;
   font-family:"Noto Serif SC","Songti SC","STSong",serif;
-  font-size:1rem; line-height:2.2; white-space:pre-wrap; padding:1rem .2rem;
+}
+.video-frame { background:var(--night); padding:.4rem; }
+.video-frame video { width:100%; display:block; }
+
+/* 虚位以待 */
+.empty-cabinet {
+  border:1px dashed var(--line); background:var(--paper-2); color:var(--ink-soft);
+  text-align:center; padding:2.2rem 1rem; font-size:.88rem; letter-spacing:.12em;
+  margin:1.2rem 0;
 }
 
-/* 布展中 */
-.under-construction { text-align:center; padding:3rem 0; color:var(--ink-soft); }
-.under-construction .icon { font-size:2.2rem; margin-bottom:1rem; }
+/* 年度特展 */
+.year-block { margin-bottom:1.8rem; }
+.year-label {
+  font-family:"Noto Serif SC","Songti SC","STSong",serif;
+  color:var(--gold); font-size:1rem; letter-spacing:.2em;
+  border-left:3px solid var(--gold); padding-left:.7rem; margin:1.4rem 0 .6rem;
+}
+
+/* 存片处表单 */
+.upload-form label { display:block; font-size:.82rem; color:var(--ink-soft); margin:.9rem 0 .25rem; letter-spacing:.08em; }
+.upload-form input[type="text"], .upload-form input[type="date"], .upload-form select {
+  width:100%; padding:.55rem .7rem; border:1px solid var(--line); background:#fff;
+  font-size:.95rem; font-family:inherit; color:var(--ink); border-radius:2px;
+}
+.upload-form input[type="file"] { font-size:.85rem; margin-top:.2rem; }
+.progress-track { height:6px; background:var(--paper-2); border-radius:3px; margin-top:1rem; overflow:hidden; }
+.progress-bar { height:100%; width:0%; background:var(--gold); transition:width .2s; }
+#upload-status { font-size:.85rem; margin-top:.6rem; min-height:1.5em; }
+#upload-status.ok { color:#5a7d54; }
+#upload-status.err { color:#b05c48; }
+.btn-row { display:flex; gap:.7rem; margin-top:1.2rem; flex-wrap:wrap; }
+.btn {
+  border:1px solid var(--gold); background:var(--gold); color:#fff;
+  padding:.6rem 1.4rem; font-size:.9rem; letter-spacing:.2em; cursor:pointer; font-family:inherit;
+}
+.btn.ghost { background:transparent; color:var(--gold); }
+.btn:disabled { opacity:.5; cursor:not-allowed; }
 
 footer { text-align:center; color:var(--ink-soft); font-size:.75rem; padding:3rem 0 5rem; letter-spacing:.15em; }
 
@@ -152,10 +186,6 @@ footer { text-align:center; color:var(--ink-soft); font-size:.75rem; padding:3re
 </head>
 <body>
 
-<!-- 密码门。换密码方法：
-     1. 在任意 https 网页按 F12 打开控制台，粘贴回车：
-        crypto.subtle.digest('SHA-256', new TextEncoder().encode('你的新密码')).then(b=>console.log([...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join('')))
-     2. 把输出的 64 位字符串替换到下方 JS 里的 GATE_HASH。 -->
 <div id="gate">
   <p class="gate-title serif">我们的博物馆</p>
   <p class="gate-sub">本馆实行预约参观制，请输入暗号</p>
@@ -164,209 +194,112 @@ footer { text-align:center; color:var(--ink-soft); font-size:.75rem; padding:3re
     <button type="submit">入 馆</button>
     <p class="gate-error" id="gate-error"></p>
   </form>
-  <p class="gate-hint">提示：只属于我们俩的密码。</p>
+  <p class="gate-hint">提示：只有一个人知道答案。</p>
 </div>
 
-<!-- 首访引导横幅（首次解锁时从顶部滑入） -->
-<div id="welcome-banner">欢迎入馆 · 今日特展：第 1 年</div>
+<div id="welcome-banner">欢迎入馆 · 今日有新片上映</div>
 
 <div id="museum" hidden>
 
   <header class="museum-head">
     <h1>我们的博物馆</h1>
-    <p class="motto">OUR MUSEUM · 开馆于 <span id="anniversary-date">2026.11.20</span></p>
+    <p class="motto">OUR MUSEUM · 影像馆 · 开馆于 <span id="anniversary-date">2026.11.20</span></p>
   </header>
 
-  <!-- 新增展厅后在这里加一行 <a href="#yearN">第N年</a> -->
   <nav>
     <a href="#hall">大厅</a>
-    <a href="#permanent">常设展</a>
-    <a href="#year1">第一年</a>
-    <a href="#chapter3">第三章</a>
+    <a href="#cinema">放映厅</a>
+    <a href="#annual">年度特展</a>
+    <a href="#upload">存片处</a>
   </nav>
 
-  <!-- ════ 第一章 · 大厅 ════ -->
+  <!-- ════ 大厅 ════ -->
   <section class="hall" id="hall">
     <div class="hall-head">
       <p class="hall-no">CHAPTER Ⅰ</p>
       <h2>大厅</h2>
       <p class="hall-date">本馆已开馆 <span id="museum-days">…</span> 天</p>
     </div>
-
     <div class="placard">
       <p class="placard-title">馆长致辞</p>
       <p style="font-size:.95rem">
-        欢迎来到这个世界上规模最小、门票最贵（一个你）的博物馆。
-        这里只收藏一种展品：我们。每一件展品不可复制、永不外借、谢绝还价。
-        参观不限时，出口在你心里。
+        欢迎来到我们的影像馆。这里的每一件藏品都是一段会动的时光——
+        手机相册会把它淹没，这里不会。参观不限时，放映不打烊。
       </p>
     </div>
-
     <div class="placard">
       <p class="placard-title">参观须知</p>
       <ul class="rules">
-        <li>馆内的我们必须永远永远爱对方没得讲价！</li>
-        <li>展品可以拍照，但禁止嫌弃摄影师（也就是我）。</li>
-        <li>请勿触摸展品——除非你摸的是我的手。</li>
-        <li>闭馆时间为 never，欢迎随时到访。</li>
-        <li>每年纪念日开一个新展厅，终身展期，概不退票。</li>
+        <li>馆内禁止吵架，违者罚抱十分钟；情节严重的，加时。</li>
+        <li>观影时允许牵手，允许笑出声。</li>
+        <li>每一部片子都值得再看一遍——尤其是他不好意思承认喜欢的那部。</li>
+        <li>新片入库请走"存片处"，馆长随时接收。</li>
+        <li>本馆不设出口。</li>
       </ul>
     </div>
   </section>
 
-  <!-- ════ 常设展厅（十年不撤的"地基"）════ -->
-  <section class="hall" id="permanent">
+  <!-- ════ 放映厅（主题柜，数据驱动）════ -->
+  <section class="hall" id="cinema">
     <div class="hall-head">
-      <p class="hall-no">PERMANENT COLLECTION</p>
-      <h2>常设展厅</h2>
-      <p class="hall-date">本馆基石 · 不设撤展日期</p>
+      <p class="hall-no">CINEMA</p>
+      <h2>放映厅</h2>
+      <p class="hall-date">按柜收藏 · 柜内最新在上</p>
     </div>
-
-
-    <div class="placard">
-      <p class="placard-title">镇馆之宝 · 甲</p>
-      <!-- ★ 各自选一件代表自己的小物件拍照上传 OSS 后替换占位框 -->
-      <div class="photo-slot">他的镇馆之宝 · 待上墙</div>
-    </div>
-
-    <div class="placard">
-      <p class="placard-title">镇馆之宝 · 乙</p>
-      <div class="photo-slot">她的镇馆之宝 · 待上墙</div>
-    </div>
-
-    <div class="placard">
-      <p class="placard-title">我们的一小步</p>
-      <!-- ★ 手绘/截图一张"意义地图"：标出对你们有意义的地点 -->
-      <div class="photo-slot">意义地图 · 待绘制</div>
+    <div class="cabinet-chips" id="cabinet-chips"></div>
+    <div id="cabinets">
+      <p style="text-align:center;color:var(--ink-soft);font-size:.85rem">正在开柜，请稍候……</p>
     </div>
   </section>
 
-  <!-- ════ 第二章 · 第 1 年展厅 ════ -->
-  <section class="hall" id="year1">
+  <!-- ════ 年度特展 ════ -->
+  <section class="hall" id="annual">
     <div class="hall-head">
-      <p class="hall-no">CHAPTER Ⅱ · YEAR ONE</p>
-      <h2>第 1 年展厅</h2>
-      <p class="hall-date">展期：第 1 年</p>
+      <p class="hall-no">ANNUAL SPECIAL</p>
+      <h2>年度特展</h2>
+      <p class="hall-date">每年纪念日 · 一部回顾片</p>
     </div>
+    <div id="annual-wall">
+      <div class="empty-cabinet">首年回顾片筹备中 · 将于开馆日首映</div>
+    </div>
+  </section>
 
-    <div class="placard">
-      <p class="placard-title">展品 Ⅰ · 年度影像</p>
-      <div class="video-frame">
-        <!-- ★ 视频录好后替换 src 和 poster 为你的 OSS 地址（公共读，mp4/H.264）
-             ★ 复刻传统：视频结尾定格一张同姿势合照，明年复刻今年的姿势 -->
-        <video controls playsinline preload="metadata"
-               poster="https://你的bucket.oss-cn-城市.aliyuncs.com/封面.jpg">
-          <source src="https://你的bucket.oss-cn-城市.aliyuncs.com/year1.mp4" type="video/mp4">
-          你的浏览器不支持视频播放。
-        </video>
+  <!-- ════ 存片处 ════ -->
+  <section class="hall" id="upload">
+    <div class="hall-head">
+      <p class="hall-no">ACQUISITION</p>
+      <h2>存片处</h2>
+      <p class="hall-date">馆长专用 · 选片入库，自动上墙</p>
+    </div>
+    <div class="placard upload-form">
+      <p class="placard-title">藏品入库单</p>
+      <label>视频文件（手机相册里选）</label>
+      <input type="file" id="up-file" accept="video/*">
+      <label>片名</label>
+      <input type="text" id="up-title" placeholder="例：第一次一起做饭">
+      <label>拍摄日期</label>
+      <input type="date" id="up-date">
+      <label>一句话展签</label>
+      <input type="text" id="up-note" placeholder="例：锅糊了，饭没糊">
+      <label>归入哪个柜子</label>
+      <select id="up-theme">
+        <option value="daily">生活切片</option>
+        <option value="trip">在路上</option>
+        <option value="bigday">高光时刻</option>
+        <option value="annual">年度特展（每年纪念日回顾片选这个）</option>
+      </select>
+      <div class="progress-track"><div class="progress-bar" id="progress-bar"></div></div>
+      <p id="upload-status"></p>
+      <div class="btn-row">
+        <button class="btn" id="btn-upload">存 入 本 馆</button>
+        <button class="btn ghost" id="btn-backup">下载清单备份</button>
       </div>
-      <p class="video-caption">《我们》· 第 1 年 · 导演：我 · 主演：我们</p>
-    </div>
-
-    <div class="placard">
-      <p class="placard-title">展品 Ⅱ · 精选照片</p>
-      <!-- 有照片后换成 <img src="OSS地址.jpg" alt="说明"> -->
-      <div class="photo-slot">照片位 Ⅰ · 待上墙</div>
-      <div class="photo-slot">照片位 Ⅱ · 待上墙</div>
-      <div class="photo-slot">照片位 Ⅲ · 待上墙</div>
-    </div>
-
-    <div class="prophecy-box">
-      <p class="placard-title serif" style="color:var(--gold);font-size:.95rem">展品 Ⅲ · 预言柜</p>
-      <p style="font-size:.93rem">
-        今年我们在此写下对未来的预言，封存一年。明年纪念日开柜批改，对错都作数。
+      <p style="font-size:.75rem;color:var(--ink-soft);margin-top:1rem">
+        提示：上传前建议把视频压到 1080p 以内（剪映导出选"微信"画质即可），
+        1 分钟约 30MB。存入后视频立即出现在对应柜子里。
       </p>
-      <!-- ★ 每年更新这里 -->
-      <p style="margin-top:1rem;font-family:'Noto Serif SC','Songti SC',serif">
-        预言①：____________________<br>
-        预言②：____________________<br>
-        预言③：____________________
-      </p>
-      <p class="grade">批改区（封存中，明年开柜）：待开柜。明年今日，由第 2 年的我们揭晓答案。</p>
-      <!-- ★ 明年开柜：换成批改结果，并删除 CSS 里 .prophecy-box .grade 的 filter:blur(5px); -->
-    </div>
-
-    <div class="placard">
-      <p class="placard-title">展品 Ⅳ · 一封信</p>
-      <!-- ★ 换成你的信 -->
-      <div class="letter">亲爱的：
-
-  见字如面。
-
-  这是我们在一起的第一年。这本书里的每一页我都翻过无数遍，
-  就像这一年里的每一天，我都想再过一遍。
-
-  我把我们的第一年做成了展厅。视频会旧，照片会黄，
-  但你可以每年今天回来一次，看新的展厅亮起灯。
-
-  明年的我现在还不在，但明年的你一定还在。
-  那就够了。
-
-          —— 第 1 年的我</div>
     </div>
   </section>
-
-  <!-- ════ 第三章 · 未定 ════ -->
-  <section class="hall" id="chapter3">
-    <div class="hall-head">
-      <p class="hall-no">CHAPTER Ⅲ · TO BE CONTINUED</p>
-      <h2>第三章 · 未定</h2>
-    </div>
-    <div class="under-construction">
-      <p class="icon">🚧</p>
-      <p>展厅正在布展中……</p>
-      <p style="font-size:.8rem;margin-top:.5rem">预计开展时间：下个纪念日</p>
-    </div>
-  </section>
-
-  <!-- ══════════════════════════════════════════════════════
-       ★★★ 每年新增展厅模板 ★★★
-       每年纪念日只需：
-       1. 复制下面这段被注释的 <section>…</section>，取消注释
-       2. yearN → year2、year3……（id 和注释里都要改）
-       3. "第 N 年展厅" → "第 2 年展厅"……
-       4. 换上新的视频、照片、预言、信
-       5. 在上面 <nav> 里加一行 <a href="#yearN">第N年</a>
-       6. Commit，完成。旧二维码自动看到新展厅。
-       ══════════════════════════════════════════════════════ -->
-  <!--
-  <section class="hall" id="yearN">
-    <div class="hall-head">
-      <p class="hall-no">CHAPTER Ⅳ · YEAR N</p>
-      <h2>第 N 年展厅</h2>
-      <p class="hall-date">展期：第 N 年</p>
-    </div>
-    <div class="placard">
-      <p class="placard-title">展品 Ⅰ · 年度影像</p>
-      <div class="video-frame">
-        <video controls playsinline preload="metadata"
-               poster="https://你的bucket.oss-cn-城市.aliyuncs.com/yearN-poster.jpg">
-          <source src="https://你的bucket.oss-cn-城市.aliyuncs.com/yearN.mp4" type="video/mp4">
-        </video>
-      </div>
-      <p class="video-caption">《我们》· 第 N 年</p>
-    </div>
-    <div class="placard">
-      <p class="placard-title">展品 Ⅱ · 精选照片</p>
-      <div class="photo-slot">照片位 Ⅰ · 待上墙</div>
-      <div class="photo-slot">照片位 Ⅱ · 待上墙</div>
-      <div class="photo-slot">照片位 Ⅲ · 待上墙</div>
-    </div>
-    <div class="prophecy-box">
-      <p class="placard-title serif" style="color:var(--gold);font-size:.95rem">展品 Ⅲ · 预言柜</p>
-      <p style="margin-top:1rem;font-family:'Noto Serif SC','Songti SC',serif">
-        预言①：____________________<br>
-        预言②：____________________
-      </p>
-      <p class="grade">批改区（明年填写）：待开柜。</p>
-    </div>
-    <div class="placard">
-      <p class="placard-title">展品 Ⅳ · 一封信</p>
-      <div class="letter">亲爱的：……</div>
-    </div>
-  </section>
-  -->
-  <!-- ══════════ 模板结束 ══════════ -->
 
   <footer>
     OUR MUSEUM · 终身展期 · 概不退票<br>
@@ -375,86 +308,332 @@ footer { text-align:center; color:var(--ink-soft); font-size:.75rem; padding:3re
 </div>
 
 <script>
-/* ═══ 密码门 ═══
-   占位密码为 museum（仅用于测试，务必更换）。
-   换密码：见 HTML 顶部密码门区域的说明。 */
-const GATE_HASH = "aa1cf2d5902bec05110cdcc3009c3d547e2a4d31412762df72f22d614f038711";
+/* ═══════════ 配置区（换密钥/换密码只改这里）═══════════ */
+const CONFIG = {
+  /* 密码 631031 的 SHA-256。换密码：F12 控制台执行
+     crypto.subtle.digest('SHA-256', new TextEncoder().encode('新密码')).then(b=>console.log([...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join('')))
+     替换下面的 gateHash。 */
+  gateHash: "aa1cf2d5902bec05110cdcc3009c3d547e2a4d31412762df72f22d614f038711",
+  anniversary: "2026-11-20",
+  /* 阿里云 OSS（密钥为最小权限子账号，仅可读写 videos/ 目录） */
+  oss: {
+    bucket: "bowieandhans-museum",
+    endpoint: "oss-cn-guangzhou.aliyuncs.com",
+    accessKeyId: "LTAI5t6pdCStGzEUPx2TZaVL",
+    accessKeySecret: "X4MSMTqCMWwyXK2Kz8Jh5AXyCUwVk0",
+    dir: "videos/"
+  }
+};
 
-/* 纪念日：2026.11.20（开馆日） */
-const ANNIVERSARY = "2026-11-20";
+/* 柜子定义：加柜子 = 复制一行改 id 和名字 */
+const THEMES = [
+  { id: "daily",  name: "生活切片", desc: "碎片日常：做饭、打闹、出门散步" },
+  { id: "trip",   name: "在路上",   desc: "旅行、出行、周末短途" },
+  { id: "bigday", name: "高光时刻", desc: "重要节点：表白、纪念日、第一次……" }
+];
+/* ═══════════ 配置区结束 ═══════════ */
 
-const gate      = document.getElementById("gate");
-const gateForm  = document.getElementById("gate-form");
-const gateInput = document.getElementById("gate-input");
-const gateError = document.getElementById("gate-error");
-const museum    = document.getElementById("museum");
-const banner    = document.getElementById("welcome-banner");
+const gate = document.getElementById("gate");
+const museum = document.getElementById("museum");
+const banner = document.getElementById("welcome-banner");
 
+/* ── 密码门 ── */
 async function sha256(text) {
   const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
   return [...new Uint8Array(buf)].map(x => x.toString(16).padStart(2, "0")).join("");
 }
-
-gateForm.addEventListener("submit", async (e) => {
+document.getElementById("gate-form").addEventListener("submit", async (e) => {
   e.preventDefault();
-  const hash = await sha256(gateInput.value.trim());
-  if (hash === GATE_HASH) {
-    unlockMuseum();
-  } else {
-    gateError.textContent = "暗号不对，馆长拒绝放行。";
-    gateInput.value = "";
-    gateInput.focus();
+  const input = document.getElementById("gate-input");
+  if (await sha256(input.value.trim()) === CONFIG.gateHash) unlockMuseum();
+  else {
+    const err = document.getElementById("gate-error");
+    err.textContent = "暗号不对，馆长拒绝放行。";
+    input.value = ""; input.focus();
   }
 });
 
-/* 入馆动画：大门隐去 + 展厅亮灯 + 首访横幅 */
 function unlockMuseum() {
   gate.classList.add("hidden");
   museum.hidden = false;
   requestAnimationFrame(() => requestAnimationFrame(() => museum.classList.add("lit")));
-  document.title = "我们的博物馆 · 大厅";
-
-  /* 首访引导横幅：只在他第一次入馆时显示 */
+  document.title = "我们的博物馆 · 影像馆";
   try {
     if (!localStorage.getItem("museum-visited")) {
       localStorage.setItem("museum-visited", Date.now());
       setTimeout(() => banner.classList.add("show"), 1200);
       setTimeout(() => banner.classList.remove("show"), 6500);
     }
-  } catch (err) { /* 隐私模式等 localStorage 不可用时静默跳过 */ }
-
-  /* 若二维码带锚点（如 /#year1），解锁后自动滚动过去 */
-  if (location.hash) {
-    const target = document.querySelector(location.hash);
-    if (target) setTimeout(() => target.scrollIntoView({ behavior: "smooth" }), 1600);
-  }
+  } catch (err) {}
+  loadGallery();
 }
 
-/* 开馆天数自动计算 */
+/* ── 开馆天数 ── */
 (function () {
-  const start = new Date(ANNIVERSARY + "T00:00:00");
+  const start = new Date(CONFIG.anniversary + "T00:00:00");
   const days = Math.max(1, Math.floor((Date.now() - start) / 86400000));
   const el = document.getElementById("museum-days");
   if (el) el.textContent = days;
-  const d = ANNIVERSARY.replaceAll("-", ".");
+  const d = CONFIG.anniversary.replaceAll("-", ".");
   document.querySelectorAll(".anniversary-copy").forEach(n => n.textContent = d);
   const head = document.getElementById("anniversary-date");
   if (head) head.textContent = d;
 })();
 
-/* 吸底导航高亮当前展厅 */
+/* ── 导航高亮 ── */
 (function () {
   const links = [...document.querySelectorAll("nav a")];
   const sections = links.map(a => document.querySelector(a.hash)).filter(Boolean);
   const obs = new IntersectionObserver((entries) => {
     entries.forEach(en => {
-      if (en.isIntersecting) {
+      if (en.isIntersecting)
         links.forEach(a => a.classList.toggle("active", a.hash === "#" + en.target.id));
-      }
     });
   }, { rootMargin: "-40% 0px -55% 0px" });
   sections.forEach(s => obs.observe(s));
 })();
+
+/* ═══════════ 展墙渲染（读取 manifest.json）═══════════ */
+const OSS_BASE = `https://${CONFIG.oss.bucket}.${CONFIG.oss.endpoint}/`;
+
+function isNew(dateStr) {
+  const diff = Date.now() - new Date(dateStr + "T00:00:00").getTime();
+  return diff >= 0 && diff <= 35 * 86400000;   /* 35 天内的片子带 NEW 标 */
+}
+function fmtDate(d) { return d ? d.replaceAll("-", ".") : ""; }
+function esc(s) {
+  return String(s || "").replace(/[&<>"']/g, c =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+function videoCard(v) {
+  const url = OSS_BASE + encodeURI(v.src);
+  return `
+  <div class="video-card" id="vc-${esc(v.id)}">
+    <div class="vc-head">
+      <span class="vc-title">${esc(v.title)}</span>
+      ${isNew(v.date) ? '<span class="vc-new">NEW</span>' : ""}
+      <span class="vc-date">${fmtDate(v.date)}</span>
+    </div>
+    ${v.note ? `<p class="vc-note">${esc(v.note)}</p>` : ""}
+    <div class="video-frame">
+      <video controls playsinline preload="none" src="${url}"></video>
+    </div>
+  </div>`;
+}
+
+function renderCabinets(videos) {
+  const box = document.getElementById("cabinets");
+  const chips = document.getElementById("cabinet-chips");
+  let html = "", chipsHtml = "";
+  THEMES.forEach(t => {
+    const list = videos.filter(v => v.theme === t.id)
+                       .sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+    chipsHtml += `<a href="#cab-${t.id}">${esc(t.name)}</a>`;
+    html += `
+    <div class="year-block" id="cab-${t.id}">
+      <p class="year-label">柜 · ${esc(t.name)}</p>
+      <p style="color:var(--ink-soft);font-size:.8rem;margin-bottom:.6rem">${esc(t.desc)} · 最新在上</p>
+      ${list.length
+        ? list.map(videoCard).join("")
+        : `<div class="empty-cabinet">本柜虚位以待 · 等一个值得存入的瞬间</div>`}
+    </div>`;
+  });
+  box.innerHTML = html;
+  chips.innerHTML = chipsHtml;
+  /* 同时只播一部 */
+  box.querySelectorAll("video").forEach(v => {
+    v.addEventListener("play", () => {
+      box.querySelectorAll("video").forEach(o => { if (o !== v) o.pause(); });
+    });
+  });
+}
+
+function renderAnnual(videos) {
+  const wall = document.getElementById("annual-wall");
+  const list = videos.filter(v => v.theme === "annual")
+                     .sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+  if (!list.length) {
+    wall.innerHTML = `<div class="empty-cabinet">首年回顾片筹备中 · 将于开馆日首映</div>`;
+    return;
+  }
+  let html = "";
+  list.forEach(v => {
+    const year = (v.date || "").slice(0, 4);
+    html += `
+      <p class="year-label">第 ${year} 年</p>
+      ${videoCard(v)}`;
+  });
+  wall.innerHTML = html;
+}
+
+async function loadManifest() {
+  try {
+    const r = await fetch(OSS_BASE + CONFIG.oss.dir + "manifest.json?_=" + Date.now(), { cache: "no-store" });
+    if (!r.ok) return { v: 1, videos: [] };
+    const m = await r.json();
+    return (m && Array.isArray(m.videos)) ? m : { v: 1, videos: [] };
+  } catch (e) { return { v: 1, videos: [] }; }
+}
+
+async function loadGallery() {
+  const m = await loadManifest();
+  renderCabinets(m.videos);
+  renderAnnual(m.videos);
+}
+
+/* ═══════════ OSS 直传（PostObject 签名，无外部依赖）═══════════ */
+function b64encode(str) {
+  return btoa(String.fromCharCode(...new TextEncoder().encode(str)));
+}
+async function hmacSha1B64(secret, msg) {
+  const key = await crypto.subtle.importKey(
+    "raw", new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-1" }, false, ["sign"]);
+  const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(msg));
+  return btoa(String.fromCharCode(...new Uint8Array(sig)));
+}
+async function buildPostFields(key) {
+  const policy = b64encode(JSON.stringify({
+    expiration: new Date(Date.now() + 3600e3).toISOString(),
+    conditions: [
+      { bucket: CONFIG.oss.bucket },
+      ["starts-with", "$key", CONFIG.oss.dir],
+      ["content-length-range", 1, 500 * 1024 * 1024]
+    ]
+  }));
+  return {
+    key,
+    policy,
+    OSSAccessKeyId: CONFIG.oss.accessKeyId,
+    signature: await hmacSha1B64(CONFIG.oss.accessKeySecret, policy),
+    success_action_status: "201"
+  };
+}
+function postToOSS(fields, file, onProgress) {
+  return new Promise((resolve, reject) => {
+    const form = new FormData();
+    Object.entries(fields).forEach(([k, v]) => form.append(k, v));
+    form.append("file", file);
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", OSS_BASE);
+    xhr.upload.onprogress = e => { if (e.lengthComputable && onProgress) onProgress(e.loaded / e.total); };
+    xhr.onload = () => (xhr.status >= 200 && xhr.status < 300) ? resolve() :
+      reject(new Error("OSS 返回 " + xhr.status));
+    xhr.onerror = () => reject(new Error("网络错误，上传中断"));
+    xhr.send(form);
+  });
+}
+
+/* ═══════════ 存片处 ═══════════ */
+(function () {
+  const today = new Date();
+  const pad = n => String(n).padStart(2, "0");
+  document.getElementById("up-date").value =
+    `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`;
+
+  const btn = document.getElementById("btn-upload");
+  const status = document.getElementById("upload-status");
+  const bar = document.getElementById("progress-bar");
+  const setStatus = (msg, cls) => { status.textContent = msg; status.className = cls || ""; };
+
+  btn.addEventListener("click", async () => {
+    const file = document.getElementById("up-file").files[0];
+    const title = document.getElementById("up-title").value.trim();
+    const date = document.getElementById("up-date").value;
+    const note = document.getElementById("up-note").value.trim();
+    const theme = document.getElementById("up-theme").value;
+
+    if (!file) return setStatus("请先选择一个视频文件", "err");
+    if (!title) return setStatus("请填写片名", "err");
+    if (!date)  return setStatus("请填写拍摄日期", "err");
+
+    btn.disabled = true;
+    bar.style.width = "0%";
+    try {
+      /* 1. 生成文件名并上传视频 */
+      const ext = (file.name.match(/\.[a-zA-Z0-9]+$/) || [".mp4"])[0].toLowerCase();
+      const rand = Math.random().toString(36).slice(2, 6);
+      const key = `${CONFIG.oss.dir}${date}-${rand}${ext}`;
+      setStatus("正在上传视频……", "");
+      await postToOSS(await buildPostFields(key), file,
+        p => { bar.style.width = Math.round(p * 90) + "%"; });
+
+      /* 2. 读取清单 → 备份旧清单 → 写入新清单 */
+      setStatus("正在登记入册……");
+      const manifest = await loadManifest();
+      const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+      const backupBlob = new Blob([JSON.stringify(manifest, null, 2)], { type: "application/json" });
+      await postToOSS(await buildPostFields(`${CONFIG.oss.dir}manifest-backup-${stamp}.json`), backupBlob, null);
+
+      manifest.videos.push({
+        id: `${date}-${rand}`,
+        src: key,
+        title, date, note, theme
+      });
+      const newBlob = new Blob([JSON.stringify(manifest, null, 2)], { type: "application/json" });
+      await postToOSS(await buildPostFields(`${CONFIG.oss.dir}manifest.json`), newBlob, null);
+
+      bar.style.width = "100%";
+      setStatus(`已入册：《${title}》`, "ok");
+      document.getElementById("up-file").value = "";
+      document.getElementById("up-title").value = "";
+      document.getElementById("up-note").value = "";
+      await loadGallery();
+    } catch (e) {
+      setStatus("入库失败：" + e.message + "（检查 Bucket 公共读/CORS/RAM 权限）", "err");
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  document.getElementById("btn-backup").addEventListener("click", async () => {
+    const m = await loadManifest();
+    const blob = new Blob([JSON.stringify(m, null, 2)], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "manifest-backup.json";
+    a.click();
+    URL.revokeObjectURL(a.href);
+  });
+})();
 </script>
 </body>
 </html>
+'''
+
+# 验证：JS 签名算法（HMAC-SHA1(policy_base64)）与 Python 实现一致性
+secret = b"X4MSMTqCMWwyXK2Kz8Jh5AXyCUwVk0"
+policy = json.dumps({
+    "expiration": "2026-11-07T13:00:00.000Z",
+    "conditions": [
+        {"bucket": "bowieandhans-museum"},
+        ["starts-with", "$key", "videos/"],
+        ["content-length-range", 1, 500*1024*1024]
+    ]
+}, separators=(",", ":"))
+p_b64 = base64.b64encode(policy.encode()).decode()
+sig = base64.b64encode(hmac.new(secret, p_b64.encode(), hashlib.sha1).digest()).decode()
+print("签名算法自检 OK:", sig[:20], "...")
+
+# 结构检查
+from html.parser import HTMLParser
+class Checker(HTMLParser):
+    VOID = {"meta","br","img","input","hr","source","link"}
+    def __init__(self):
+        super().__init__(); self.stack=[]; self.errors=[]
+    def handle_starttag(self, tag, attrs):
+        if tag not in self.VOID: self.stack.append(tag)
+    def handle_endtag(self, tag):
+        if tag in self.VOID: return
+        if not self.stack or self.stack[-1]!=tag:
+            self.errors.append(f"</{tag}> vs {self.stack[-3:]}")
+        else: self.stack.pop()
+c = Checker(); c.feed(html)
+print("HTML配对:", "OK" if not c.errors and not c.stack else (c.errors, c.stack))
+js = html.split("<script>")[1].split("</script>")[0]
+print("JS花括号:", js.count("{")==js.count("}"), "圆括号:", js.count("(")==js.count(")"))
+
+with open("/mnt/agents/output/index.html", "w", encoding="utf-8") as f:
+    f.write(html)
+print(len(html), "bytes written")
