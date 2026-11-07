@@ -1,7 +1,4 @@
-Request
-import hashlib, json, hmac, base64
-
-html = r'''<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
@@ -9,10 +6,9 @@ html = r'''<!DOCTYPE html>
 <title>我们的博物馆</title>
 <style>
 /* ══════════════════════════════════════════════════════════
-   我们的博物馆 · 影像馆（最终版）
-   定位：存储我们的恋爱小视频。照片归实体相册，这里只放映。
-   结构：大厅 → 放映厅（主题柜）→ 年度特展 → 存片处
-   视频清单：OSS 上的 videos/manifest.json，存片处自动维护
+   我们的博物馆 · 影像馆（纯净最终版）
+   结构：大厅 → 放映厅（主题柜）→ 年度特展 → 存片处（入库 + 藏品管理）
+   视频清单：OSS videos/manifest.json，存片处自动维护
    ══════════════════════════════════════════════════════════ */
 :root {
   --paper:#f6f1e7; --paper-2:#efe8d9; --ink:#2b2823;
@@ -66,7 +62,7 @@ a { color:var(--gold); }
 }
 #welcome-banner.show { transform:translate(-50%,0); }
 
-/* 主体：亮灯动画 */
+/* 主体 */
 #museum {
   max-width:720px; margin:0 auto; padding:0 1.25rem 6rem;
   opacity:0; filter:brightness(.6);
@@ -100,7 +96,7 @@ nav a:active, nav a.active { color:var(--gold); }
 .hall-head h2 { font-size:1.45rem; margin-top:.6rem; }
 .hall-head .hall-date { color:var(--ink-soft); font-size:.8rem; margin-top:.5rem; }
 
-/* 展签卡片 */
+/* 展签 */
 .placard {
   background:#fffdf7; border:1px solid var(--line);
   padding:1.2rem 1.4rem; margin:1.5rem 0;
@@ -118,7 +114,7 @@ nav a:active, nav a.active { color:var(--gold); }
 .rules li { padding:.55rem 0 .55rem 1.6em; position:relative; font-size:.92rem; }
 .rules li::before { content:"§"; position:absolute; left:0; color:var(--gold); }
 
-/* 柜子跳转胶囊 */
+/* 柜子胶囊 */
 .cabinet-chips { display:flex; flex-wrap:wrap; gap:.5rem; justify-content:center; margin-bottom:2rem; }
 .cabinet-chips a {
   border:1px solid var(--line); border-radius:2rem; padding:.3rem .95rem;
@@ -156,25 +152,63 @@ nav a:active, nav a.active { color:var(--gold); }
   border-left:3px solid var(--gold); padding-left:.7rem; margin:1.4rem 0 .6rem;
 }
 
-/* 存片处表单 */
-.upload-form label { display:block; font-size:.82rem; color:var(--ink-soft); margin:.9rem 0 .25rem; letter-spacing:.08em; }
+/* ── 存片处：入库单 ── */
+.file-zone {
+  border:1.5px dashed var(--gold); border-radius:4px; background:#fffdf7;
+  padding:1.6rem 1rem; text-align:center; cursor:pointer; margin-top:.3rem;
+  transition:background .2s;
+}
+.file-zone:active { background:var(--paper-2); }
+.file-zone .fz-icon { font-size:1.6rem; }
+.file-zone .fz-text { font-size:.85rem; color:var(--ink-soft); margin-top:.3rem; letter-spacing:.1em; }
+.file-zone .fz-name { font-size:.85rem; color:var(--gold); margin-top:.3rem; word-break:break-all; }
+
+.upload-form label {
+  display:block; font-size:.8rem; color:var(--ink-soft); margin:1.1rem 0 .3rem; letter-spacing:.1em;
+}
 .upload-form input[type="text"], .upload-form input[type="date"], .upload-form select {
-  width:100%; padding:.55rem .7rem; border:1px solid var(--line); background:#fff;
+  width:100%; padding:.6rem .75rem; border:1px solid var(--line); background:#fff;
   font-size:.95rem; font-family:inherit; color:var(--ink); border-radius:2px;
 }
-.upload-form input[type="file"] { font-size:.85rem; margin-top:.2rem; }
-.progress-track { height:6px; background:var(--paper-2); border-radius:3px; margin-top:1rem; overflow:hidden; }
+.upload-form input[type="file"] { display:none; }
+
+.progress-track { height:5px; background:var(--paper-2); border-radius:3px; margin-top:1.4rem; overflow:hidden; }
 .progress-bar { height:100%; width:0%; background:var(--gold); transition:width .2s; }
-#upload-status { font-size:.85rem; margin-top:.6rem; min-height:1.5em; }
+#upload-status { font-size:.85rem; margin-top:.7rem; min-height:1.5em; }
 #upload-status.ok { color:#5a7d54; }
 #upload-status.err { color:#b05c48; }
-.btn-row { display:flex; gap:.7rem; margin-top:1.2rem; flex-wrap:wrap; }
+.btn-row { display:flex; gap:.7rem; margin-top:1.3rem; flex-wrap:wrap; }
 .btn {
   border:1px solid var(--gold); background:var(--gold); color:#fff;
-  padding:.6rem 1.4rem; font-size:.9rem; letter-spacing:.2em; cursor:pointer; font-family:inherit;
+  padding:.65rem 1.6rem; font-size:.9rem; letter-spacing:.25em; cursor:pointer; font-family:inherit;
+  border-radius:2px;
 }
 .btn.ghost { background:transparent; color:var(--gold); }
+.btn.danger { background:transparent; border-color:#b05c48; color:#b05c48; }
 .btn:disabled { opacity:.5; cursor:not-allowed; }
+.btn-mini {
+  border:1px solid var(--line); background:#fff; color:var(--ink-soft);
+  font-size:.72rem; padding:.15rem .6rem; cursor:pointer; font-family:inherit; border-radius:2rem;
+}
+.btn-mini.danger { border-color:#b05c48; color:#b05c48; }
+
+/* ── 藏品管理 ── */
+details.mgmt { margin-top:1.2rem; }
+details.mgmt summary {
+  cursor:pointer; font-size:.85rem; color:var(--gold); letter-spacing:.15em;
+  padding:.6rem 0; list-style:none; font-family:"Noto Serif SC","Songti SC","STSong",serif;
+}
+details.mgmt summary::before { content:"▸ "; }
+details.mgmt[open] summary::before { content:"▾ "; }
+.mgmt-list { border-top:1px dashed var(--line); }
+.mgmt-row {
+  display:flex; align-items:center; gap:.6rem; padding:.7rem 0;
+  border-bottom:1px dashed var(--line); flex-wrap:wrap;
+}
+.mgmt-row .mr-title { font-size:.9rem; font-family:"Noto Serif SC","Songti SC","STSong",serif; flex:1; min-width:9em; }
+.mgmt-row .mr-meta { font-size:.72rem; color:var(--ink-soft); }
+.mgmt-row .mr-hidden-tag { font-size:.68rem; color:#b05c48; border:1px solid #b05c48; border-radius:2rem; padding:0 .45rem; }
+.mgmt-empty { color:var(--ink-soft); font-size:.82rem; padding:1rem 0; text-align:center; }
 
 footer { text-align:center; color:var(--ink-soft); font-size:.75rem; padding:3rem 0 5rem; letter-spacing:.15em; }
 
@@ -239,12 +273,12 @@ footer { text-align:center; color:var(--ink-soft); font-size:.75rem; padding:3re
     </div>
   </section>
 
-  <!-- ════ 放映厅（主题柜，数据驱动）════ -->
+  <!-- ════ 放映厅 ════ -->
   <section class="hall" id="cinema">
     <div class="hall-head">
       <p class="hall-no">CINEMA</p>
       <h2>放映厅</h2>
-      <p class="hall-date">按柜收藏 · 柜内最新在上</p>
+      <p class="hall-date">按柜收藏 · 柜内最新在上 · 点开即播</p>
     </div>
     <div class="cabinet-chips" id="cabinet-chips"></div>
     <div id="cabinets">
@@ -271,33 +305,51 @@ footer { text-align:center; color:var(--ink-soft); font-size:.75rem; padding:3re
       <h2>存片处</h2>
       <p class="hall-date">馆长专用 · 选片入库，自动上墙</p>
     </div>
+
     <div class="placard upload-form">
       <p class="placard-title">藏品入库单</p>
-      <label>视频文件（手机相册里选）</label>
+
+      <label>① 选片</label>
+      <div class="file-zone" id="file-zone">
+        <p class="fz-icon">🎞️</p>
+        <p class="fz-text">点击选择视频（手机相册 / 电脑文件夹均可）</p>
+        <p class="fz-name" id="fz-name"></p>
+      </div>
       <input type="file" id="up-file" accept="video/*">
-      <label>片名</label>
+
+      <label>② 片名</label>
       <input type="text" id="up-title" placeholder="例：第一次一起做饭">
-      <label>拍摄日期</label>
+
+      <label>③ 拍摄日期</label>
       <input type="date" id="up-date">
-      <label>一句话展签</label>
+
+      <label>④ 一句话展签</label>
       <input type="text" id="up-note" placeholder="例：锅糊了，饭没糊">
-      <label>归入哪个柜子</label>
+
+      <label>⑤ 归入哪个柜子</label>
       <select id="up-theme">
         <option value="daily">生活切片</option>
         <option value="trip">在路上</option>
         <option value="bigday">高光时刻</option>
         <option value="annual">年度特展（每年纪念日回顾片选这个）</option>
       </select>
+
       <div class="progress-track"><div class="progress-bar" id="progress-bar"></div></div>
       <p id="upload-status"></p>
       <div class="btn-row">
         <button class="btn" id="btn-upload">存 入 本 馆</button>
-        <button class="btn ghost" id="btn-backup">下载清单备份</button>
       </div>
       <p style="font-size:.75rem;color:var(--ink-soft);margin-top:1rem">
         提示：上传前建议把视频压到 1080p 以内（剪映导出选"微信"画质即可），
-        1 分钟约 30MB。存入后视频立即出现在对应柜子里。
+        1 分钟约 30MB。存入后视频立即出现在对应柜子里，点开即播。
       </p>
+
+      <details class="mgmt">
+        <summary>藏品管理 · 撤下 / 删除</summary>
+        <div class="mgmt-list" id="mgmt-list">
+          <p class="mgmt-empty">暂无藏品</p>
+        </div>
+      </details>
     </div>
   </section>
 
@@ -315,7 +367,6 @@ const CONFIG = {
      替换下面的 gateHash。 */
   gateHash: "aa1cf2d5902bec05110cdcc3009c3d547e2a4d31412762df72f22d614f038711",
   anniversary: "2026-11-20",
-  /* 阿里云 OSS（密钥为最小权限子账号，仅可读写 videos/ 目录） */
   oss: {
     bucket: "bowieandhans-museum",
     endpoint: "oss-cn-guangzhou.aliyuncs.com",
@@ -331,6 +382,7 @@ const THEMES = [
   { id: "trip",   name: "在路上",   desc: "旅行、出行、周末短途" },
   { id: "bigday", name: "高光时刻", desc: "重要节点：表白、纪念日、第一次……" }
 ];
+const THEME_NAME = Object.fromEntries([...THEMES.map(t => [t.id, t.name]), ["annual", "年度特展"]]);
 /* ═══════════ 配置区结束 ═══════════ */
 
 const gate = document.getElementById("gate");
@@ -393,12 +445,12 @@ function unlockMuseum() {
   sections.forEach(s => obs.observe(s));
 })();
 
-/* ═══════════ 展墙渲染（读取 manifest.json）═══════════ */
+/* ═══════════ 展墙渲染 ═══════════ */
 const OSS_BASE = `https://${CONFIG.oss.bucket}.${CONFIG.oss.endpoint}/`;
 
 function isNew(dateStr) {
   const diff = Date.now() - new Date(dateStr + "T00:00:00").getTime();
-  return diff >= 0 && diff <= 35 * 86400000;   /* 35 天内的片子带 NEW 标 */
+  return diff >= 0 && diff <= 35 * 86400000;
 }
 function fmtDate(d) { return d ? d.replaceAll("-", ".") : ""; }
 function esc(s) {
@@ -423,12 +475,13 @@ function videoCard(v) {
 }
 
 function renderCabinets(videos) {
+  const visible = videos.filter(v => !v.hidden);
   const box = document.getElementById("cabinets");
   const chips = document.getElementById("cabinet-chips");
   let html = "", chipsHtml = "";
   THEMES.forEach(t => {
-    const list = videos.filter(v => v.theme === t.id)
-                       .sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+    const list = visible.filter(v => v.theme === t.id)
+                        .sort((a, b) => (b.date || "").localeCompare(a.date || ""));
     chipsHtml += `<a href="#cab-${t.id}">${esc(t.name)}</a>`;
     html += `
     <div class="year-block" id="cab-${t.id}">
@@ -441,7 +494,6 @@ function renderCabinets(videos) {
   });
   box.innerHTML = html;
   chips.innerHTML = chipsHtml;
-  /* 同时只播一部 */
   box.querySelectorAll("video").forEach(v => {
     v.addEventListener("play", () => {
       box.querySelectorAll("video").forEach(o => { if (o !== v) o.pause(); });
@@ -451,20 +503,16 @@ function renderCabinets(videos) {
 
 function renderAnnual(videos) {
   const wall = document.getElementById("annual-wall");
-  const list = videos.filter(v => v.theme === "annual")
+  const list = videos.filter(v => v.theme === "annual" && !v.hidden)
                      .sort((a, b) => (b.date || "").localeCompare(a.date || ""));
   if (!list.length) {
     wall.innerHTML = `<div class="empty-cabinet">首年回顾片筹备中 · 将于开馆日首映</div>`;
     return;
   }
-  let html = "";
-  list.forEach(v => {
+  wall.innerHTML = list.map(v => {
     const year = (v.date || "").slice(0, 4);
-    html += `
-      <p class="year-label">第 ${year} 年</p>
-      ${videoCard(v)}`;
-  });
-  wall.innerHTML = html;
+    return `<p class="year-label">第 ${year} 年</p>` + videoCard(v);
+  }).join("");
 }
 
 async function loadManifest() {
@@ -480,9 +528,10 @@ async function loadGallery() {
   const m = await loadManifest();
   renderCabinets(m.videos);
   renderAnnual(m.videos);
+  renderMgmt(m.videos);
 }
 
-/* ═══════════ OSS 直传（PostObject 签名，无外部依赖）═══════════ */
+/* ═══════════ OSS 签名工具 ═══════════ */
 function b64encode(str) {
   return btoa(String.fromCharCode(...new TextEncoder().encode(str)));
 }
@@ -503,8 +552,7 @@ async function buildPostFields(key) {
     ]
   }));
   return {
-    key,
-    policy,
+    key, policy,
     OSSAccessKeyId: CONFIG.oss.accessKeyId,
     signature: await hmacSha1B64(CONFIG.oss.accessKeySecret, policy),
     success_action_status: "201"
@@ -524,9 +572,87 @@ function postToOSS(fields, file, onProgress) {
     xhr.send(form);
   });
 }
+async function ossDelete(key) {
+  const date = new Date().toUTCString();
+  const stringToSign = `DELETE\n\n\n${date}\n/${CONFIG.oss.bucket}/${key}`;
+  const sig = await hmacSha1B64(CONFIG.oss.accessKeySecret, stringToSign);
+  const r = await fetch(OSS_BASE + encodeURI(key), {
+    method: "DELETE",
+    headers: { "Date": date, "Authorization": `OSS ${CONFIG.oss.accessKeyId}:${sig}` }
+  });
+  if (!r.ok && r.status !== 204 && r.status !== 404)
+    throw new Error("OSS 返回 " + r.status);
+}
+/* 改写清单（自动备份旧版） */
+async function saveManifestWithBackup(manifest) {
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const backupBlob = new Blob([JSON.stringify(manifest, null, 2)], { type: "application/json" });
+  await postToOSS(await buildPostFields(`${CONFIG.oss.dir}manifest-backup-${stamp}.json`), backupBlob, null);
+  const newBlob = new Blob([JSON.stringify(manifest, null, 2)], { type: "application/json" });
+  await postToOSS(await buildPostFields(`${CONFIG.oss.dir}manifest.json`), newBlob, null);
+}
 
-/* ═══════════ 存片处 ═══════════ */
+/* ═══════════ 藏品管理渲染 ═══════════ */
+function renderMgmt(videos) {
+  const list = document.getElementById("mgmt-list");
+  if (!videos.length) {
+    list.innerHTML = `<p class="mgmt-empty">暂无藏品</p>`;
+    return;
+  }
+  list.innerHTML = [...videos]
+    .sort((a, b) => (b.date || "").localeCompare(a.date || ""))
+    .map(v => `
+    <div class="mgmt-row" data-id="${esc(v.id)}">
+      <span class="mr-title">${esc(v.title)}</span>
+      ${v.hidden ? '<span class="mr-hidden-tag">已撤下</span>' : ""}
+      <span class="mr-meta">${fmtDate(v.date)} · ${esc(THEME_NAME[v.theme] || v.theme)}</span>
+      <button class="btn-mini" data-act="toggle">${v.hidden ? "恢复" : "撤下"}</button>
+      <button class="btn-mini danger" data-act="del">删除</button>
+    </div>`).join("");
+}
+
+document.getElementById("mgmt-list").addEventListener("click", async (e) => {
+  const btn = e.target.closest("button[data-act]");
+  if (!btn) return;
+  const row = btn.closest(".mgmt-row");
+  const id = row.dataset.id;
+  const manifest = await loadManifest();
+  const v = manifest.videos.find(x => x.id === id);
+  if (!v) return;
+  const status = document.getElementById("upload-status");
+  try {
+    if (btn.dataset.act === "toggle") {
+      v.hidden = !v.hidden;
+      await saveManifestWithBackup(manifest);
+      status.textContent = v.hidden ? `已撤下《${v.title}》（文件保留，可随时恢复）` : `《${v.title}》已重新上墙`;
+      status.className = "ok";
+    } else {
+      if (!confirm(`确认删除《${v.title}》？\n视频文件将从库房彻底移除，不可恢复。`)) return;
+      await ossDelete(v.src);
+      manifest.videos = manifest.videos.filter(x => x.id !== id);
+      await saveManifestWithBackup(manifest);
+      status.textContent = `已删除《${v.title}》`;
+      status.className = "ok";
+    }
+    await loadGallery();
+  } catch (err) {
+    status.textContent = "操作失败：" + err.message + "（检查 RAM 是否已加 DeleteObject 权限、CORS 是否已勾 DELETE）";
+    status.className = "err";
+  }
+});
+
+/* ═══════════ 存片处：入库 ═══════════ */
 (function () {
+  const fileInput = document.getElementById("up-file");
+  const fileZone = document.getElementById("file-zone");
+  const fzName = document.getElementById("fz-name");
+  fileZone.addEventListener("click", () => fileInput.click());
+  fileInput.addEventListener("change", () => {
+    fzName.textContent = fileInput.files[0]
+      ? "已选：" + fileInput.files[0].name + "（" + Math.round(fileInput.files[0].size / 1048576) + " MB）"
+      : "";
+  });
+
   const today = new Date();
   const pad = n => String(n).padStart(2, "0");
   document.getElementById("up-date").value =
@@ -538,102 +664,45 @@ function postToOSS(fields, file, onProgress) {
   const setStatus = (msg, cls) => { status.textContent = msg; status.className = cls || ""; };
 
   btn.addEventListener("click", async () => {
-    const file = document.getElementById("up-file").files[0];
+    const file = fileInput.files[0];
     const title = document.getElementById("up-title").value.trim();
     const date = document.getElementById("up-date").value;
     const note = document.getElementById("up-note").value.trim();
     const theme = document.getElementById("up-theme").value;
 
-    if (!file) return setStatus("请先选择一个视频文件", "err");
+    if (!file) return setStatus("请先选择视频（点击上方虚线框）", "err");
     if (!title) return setStatus("请填写片名", "err");
     if (!date)  return setStatus("请填写拍摄日期", "err");
 
     btn.disabled = true;
     bar.style.width = "0%";
     try {
-      /* 1. 生成文件名并上传视频 */
       const ext = (file.name.match(/\.[a-zA-Z0-9]+$/) || [".mp4"])[0].toLowerCase();
       const rand = Math.random().toString(36).slice(2, 6);
       const key = `${CONFIG.oss.dir}${date}-${rand}${ext}`;
-      setStatus("正在上传视频……", "");
+
+      setStatus("正在上传视频……");
       await postToOSS(await buildPostFields(key), file,
         p => { bar.style.width = Math.round(p * 90) + "%"; });
 
-      /* 2. 读取清单 → 备份旧清单 → 写入新清单 */
       setStatus("正在登记入册……");
       const manifest = await loadManifest();
-      const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-      const backupBlob = new Blob([JSON.stringify(manifest, null, 2)], { type: "application/json" });
-      await postToOSS(await buildPostFields(`${CONFIG.oss.dir}manifest-backup-${stamp}.json`), backupBlob, null);
-
-      manifest.videos.push({
-        id: `${date}-${rand}`,
-        src: key,
-        title, date, note, theme
-      });
-      const newBlob = new Blob([JSON.stringify(manifest, null, 2)], { type: "application/json" });
-      await postToOSS(await buildPostFields(`${CONFIG.oss.dir}manifest.json`), newBlob, null);
+      manifest.videos.push({ id: `${date}-${rand}`, src: key, title, date, note, theme });
+      await saveManifestWithBackup(manifest);
 
       bar.style.width = "100%";
       setStatus(`已入册：《${title}》`, "ok");
-      document.getElementById("up-file").value = "";
+      fileInput.value = ""; fzName.textContent = "";
       document.getElementById("up-title").value = "";
       document.getElementById("up-note").value = "";
       await loadGallery();
     } catch (e) {
-      setStatus("入库失败：" + e.message + "（检查 Bucket 公共读/CORS/RAM 权限）", "err");
+      setStatus("入库失败：" + e.message + "（检查 Bucket 公共读 / CORS / RAM 权限）", "err");
     } finally {
       btn.disabled = false;
     }
-  });
-
-  document.getElementById("btn-backup").addEventListener("click", async () => {
-    const m = await loadManifest();
-    const blob = new Blob([JSON.stringify(m, null, 2)], { type: "application/json" });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = "manifest-backup.json";
-    a.click();
-    URL.revokeObjectURL(a.href);
   });
 })();
 </script>
 </body>
 </html>
-'''
-
-# 验证：JS 签名算法（HMAC-SHA1(policy_base64)）与 Python 实现一致性
-secret = b"X4MSMTqCMWwyXK2Kz8Jh5AXyCUwVk0"
-policy = json.dumps({
-    "expiration": "2026-11-07T13:00:00.000Z",
-    "conditions": [
-        {"bucket": "bowieandhans-museum"},
-        ["starts-with", "$key", "videos/"],
-        ["content-length-range", 1, 500*1024*1024]
-    ]
-}, separators=(",", ":"))
-p_b64 = base64.b64encode(policy.encode()).decode()
-sig = base64.b64encode(hmac.new(secret, p_b64.encode(), hashlib.sha1).digest()).decode()
-print("签名算法自检 OK:", sig[:20], "...")
-
-# 结构检查
-from html.parser import HTMLParser
-class Checker(HTMLParser):
-    VOID = {"meta","br","img","input","hr","source","link"}
-    def __init__(self):
-        super().__init__(); self.stack=[]; self.errors=[]
-    def handle_starttag(self, tag, attrs):
-        if tag not in self.VOID: self.stack.append(tag)
-    def handle_endtag(self, tag):
-        if tag in self.VOID: return
-        if not self.stack or self.stack[-1]!=tag:
-            self.errors.append(f"</{tag}> vs {self.stack[-3:]}")
-        else: self.stack.pop()
-c = Checker(); c.feed(html)
-print("HTML配对:", "OK" if not c.errors and not c.stack else (c.errors, c.stack))
-js = html.split("<script>")[1].split("</script>")[0]
-print("JS花括号:", js.count("{")==js.count("}"), "圆括号:", js.count("(")==js.count(")"))
-
-with open("/mnt/agents/output/index.html", "w", encoding="utf-8") as f:
-    f.write(html)
-print(len(html), "bytes written")
