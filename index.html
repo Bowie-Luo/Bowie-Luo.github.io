@@ -346,10 +346,14 @@ footer { text-align:center; color:var(--ink-soft); font-size:.75rem; padding:3re
       </p>
 
       <details class="mgmt">
-        <summary>藏品管理 · 撤下 / 删除</summary>
+        <summary>藏品管理 · 撤下 / 移除</summary>
         <div class="mgmt-list" id="mgmt-list">
           <p class="mgmt-empty">暂无藏品</p>
         </div>
+        <p style="font-size:.72rem;color:var(--ink-soft);margin-top:.8rem;line-height:1.7">
+          撤下 / 移除只改清单登记，视频文件仍存放在阿里云 OSS 库房。<br>
+          清理文件：OSS 控制台 → bowieandhans-museum → videos/ → 勾选后删除。
+        </p>
       </details>
     </div>
   </section>
@@ -573,64 +577,6 @@ function postToOSS(fields, file, onProgress) {
     xhr.send(form);
   });
 }
-/* V4 签名辅助 */
-async function hmacSha256Raw(keyBytes, msg) {
-  const key = await crypto.subtle.importKey(
-    "raw", keyBytes, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
-  return new Uint8Array(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(msg)));
-}
-async function hmacSha256Hex(keyBytes, msg) {
-  const sig = await hmacSha256Raw(keyBytes, msg);
-  return [...sig].map(x => x.toString(16).padStart(2, "0")).join("");
-}
-async function sha256Hex(text) {
-  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
-  return [...new Uint8Array(buf)].map(x => x.toString(16).padStart(2, "0")).join("");
-}
-
-/* 删除：OSS V4 签名（新建 Bucket 强制 V4，全区域兼容） */
-async function ossDelete(key) {
-  const now = new Date();
-  const pad = n => String(n).padStart(2, "0");
-  const dateStamp = `${now.getUTCFullYear()}${pad(now.getUTCMonth() + 1)}${pad(now.getUTCDate())}`;
-  const amzDate = `${dateStamp}T${pad(now.getUTCHours())}${pad(now.getUTCMinutes())}${pad(now.getUTCSeconds())}Z`;
-  const region = CONFIG.oss.endpoint.split(".")[0].replace(/^oss-/, "");
-  const host = `${CONFIG.oss.bucket}.${CONFIG.oss.endpoint}`;
-  const uri = "/" + key.split("/").map(encodeURIComponent).join("/");
-
-  const canonicalHeaders =
-    `host:${host}\n` +
-    `x-oss-content-sha256:UNSIGNED-PAYLOAD\n` +
-    `x-oss-date:${amzDate}\n`;
-  const signedHeaders = "host;x-oss-content-sha256;x-oss-date";
-  const canonicalRequest = [
-    "DELETE", uri, "", canonicalHeaders, signedHeaders, "UNSIGNED-PAYLOAD"
-  ].join("\n");
-  const scope = `${dateStamp}/${region}/oss/aliyun_v4_request`;
-  const stringToSign = [
-    "OSS4-HMAC-SHA256", amzDate, scope, await sha256Hex(canonicalRequest)
-  ].join("\n");
-
-  const kDate    = await hmacSha256Raw(new TextEncoder().encode("aliyun_v4" + CONFIG.oss.accessKeySecret), dateStamp);
-  const kRegion  = await hmacSha256Raw(kDate, region);
-  const kProduct = await hmacSha256Raw(kRegion, "oss");
-  const kSigning = await hmacSha256Raw(kProduct, "aliyun_v4_request");
-  const sig = await hmacSha256Hex(kSigning, stringToSign);
-
-  const r = await fetch(`https://${host}${uri}`, {
-    method: "DELETE",
-    headers: {
-      "x-oss-date": amzDate,
-      "x-oss-content-sha256": "UNSIGNED-PAYLOAD",
-      "Authorization": `OSS4-HMAC-SHA256 Credential=${CONFIG.oss.accessKeyId}/${scope},Signature=${sig}`
-    }
-  });
-  if (!r.ok && r.status !== 204 && r.status !== 404) {
-    const body = await r.text().catch(() => "");
-    const m = body.match(/<Code>(.*?)<\/Code>/);
-    throw new Error("OSS " + r.status + (m ? " " + m[1] : ""));
-  }
-}
 /* 改写清单（自动备份旧版） */
 async function saveManifestWithBackup(manifest) {
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
@@ -655,7 +601,7 @@ function renderMgmt(videos) {
       ${v.hidden ? '<span class="mr-hidden-tag">已撤下</span>' : ""}
       <span class="mr-meta">${fmtDate(v.date)} · ${esc(THEME_NAME[v.theme] || v.theme)}</span>
       <button class="btn-mini" data-act="toggle">${v.hidden ? "恢复" : "撤下"}</button>
-      <button class="btn-mini danger" data-act="del">删除</button>
+      <button class="btn-mini danger" data-act="del">移除</button>
     </div>`).join("");
 }
 
@@ -675,16 +621,15 @@ document.getElementById("mgmt-list").addEventListener("click", async (e) => {
       status.textContent = v.hidden ? `已撤下《${v.title}》（文件保留，可随时恢复）` : `《${v.title}》已重新上墙`;
       status.className = "ok";
     } else {
-      if (!confirm(`确认删除《${v.title}》？\n视频文件将从库房彻底移除，不可恢复。`)) return;
-      await ossDelete(v.src);
+      if (!confirm(`确认移除《${v.title}》？\n将从展墙和清单中移除；视频文件保留在库房。`)) return;
       manifest.videos = manifest.videos.filter(x => x.id !== id);
       await saveManifestWithBackup(manifest);
-      status.textContent = `已删除《${v.title}》`;
+      status.textContent = `已移除《${v.title}》（文件保留在库房）`;
       status.className = "ok";
     }
     await loadGallery();
   } catch (err) {
-    status.textContent = "操作失败：" + err.message + "（检查 RAM 是否已加 DeleteObject 权限、CORS 是否已勾 DELETE）";
+    status.textContent = "操作失败：" + err.message + "（检查 Bucket 公共读 / CORS 设置）";
     status.className = "err";
   }
 });
