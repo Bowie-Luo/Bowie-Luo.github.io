@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>我们的博物馆</title>
+<style>
+:root {
+  --paper:#f6f1e7; --paper-2:#efe8d9; --ink:#2b2823;
+  --ink-soft:#6b6357; --gold:#9a7b4f; --line:#d8cfbc; --night:#1d1a16;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+html { scroll-behavior:smooth; }
+body {
+  background:var(--paper); color:var(--ink);
+  font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+  line-height:1.9;
+}
+h1,h2,h3,.serif {
+  font-family:"Noto Serif SC","Songti SC","STSong","SimSun",Georgia,serif;
+  font-weight:600; letter-spacing:.06em;
+}
+a { color:var(--gold); }
+
+/* 密码门 */
+#gate {
+  position:fixed; inset:0; z-index:99;
+  background:var(--night); color:#e8e0cf;
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  padding:2rem; text-align:center;
+  transition:opacity 1.2s ease;
+}
+#gate.hidden { opacity:0; pointer-events:none; }
+#gate .gate-title { font-size:1.4rem; margin-bottom:.5rem; }
+#gate .gate-sub { color:#9a9082; font-size:.85rem; margin-bottom:2.5rem; }
+#gate form { display:flex; flex-direction:column; gap:1rem; width:min(280px,80vw); }
+#gate input {
+  background:transparent; border:none; border-bottom:1px solid #6b6357;
+  color:#e8e0cf; text-align:center; font-size:1.1rem;
+  padding:.5rem; letter-spacing:.3em; outline:none;
+}
+#gate button {
+  margin-top:.5rem; background:none; border:1px solid #9a9082;
+  color:#e8e0cf; padding:.6rem; font-size:.9rem; letter-spacing:.4em;
+  cursor:pointer; font-family:inherit;
+}
+#gate button:active { background:#3a352e; }
+#gate .gate-hint { color:#6b6357; font-size:.78rem; margin-top:2rem; }
+#gate .gate-error { color:#c08a7a; font-size:.85rem; min-height:1.4em; }
+
+/* 展馆主体：从暗到亮 */
+#museum {
+  max-width:720px; margin:0 auto; padding:0 1.25rem 6rem;
+  opacity:0; filter:brightness(.6);
+  transition:opacity 1.4s ease, filter 1.4s ease;
+}
+#museum.lit { opacity:1; filter:brightness(1); }
+
+/* 首访引导横幅 */
+#welcome-banner {
+  position:fixed; top:1rem; left:50%; transform:translate(-50%,-200%);
+  z-index:60; background:var(--ink); color:var(--paper);
+  padding:.7rem 1.4rem; font-size:.82rem; letter-spacing:.12em;
+  border-radius:2rem; white-space:nowrap;
+  transition:transform .8s ease;
+  box-shadow:0 4px 16px rgba(43,40,35,.25);
+}
+#welcome-banner.show { transform:translate(-50%,0); }
+
+.museum-head { text-align:center; padding:4rem 0 2.5rem; }
+.museum-head h1 { font-size:1.7rem; }
+.museum-head .motto { color:var(--ink-soft); font-size:.82rem; margin-top:.8rem; letter-spacing:.2em; }
+
+/* 吸底导航 */
+nav {
+  position:fixed; bottom:0; left:0; right:0; z-index:50;
+  background:rgba(246,241,231,.94); backdrop-filter:blur(6px);
+  border-top:1px solid var(--line);
+  display:flex; justify-content:center;
+  padding-bottom:env(safe-area-inset-bottom);
+}
+nav a {
+  flex:1; max-width:140px; text-align:center;
+  padding:.9rem 0 .8rem; text-decoration:none;
+  color:var(--ink-soft); font-size:.82rem; letter-spacing:.15em;
+}
+nav a:active, nav a.active { color:var(--gold); }
+
+/* 展厅通用 */
+.hall { padding:3.5rem 0 2rem; border-top:1px solid var(--line); }
+.hall-head { text-align:center; margin-bottom:2.5rem; }
+.hall-head .hall-no { color:var(--gold); font-size:.8rem; letter-spacing:.35em; }
+.hall-head h2 { font-size:1.45rem; margin-top:.6rem; }
+.hall-head .hall-date { color:var(--ink-soft); font-size:.8rem; margin-top:.5rem; }
+
+/* 展签 */
+.placard {
+  background:#fffdf7; border:1px solid var(--line);
+  padding:1.2rem 1.4rem; margin:1.5rem 0;
+  box-shadow:0 1px 3px rgba(43,40,35,.06);
+}
+.placard .placard-title {
+  font-family:"Noto Serif SC","Songti SC","STSong",serif;
+  font-size:.95rem; color:var(--gold);
+  border-bottom:1px dashed var(--line); padding-bottom:.5rem; margin-bottom:.8rem;
+  letter-spacing:.1em;
+}
+
+/* 参观须知 */
+.rules { list-style:none; }
+.rules li { padding:.55rem 0 .55rem 1.6em; position:relative; font-size:.92rem; }
+.rules li::before { content:"§"; position:absolute; left:0; color:var(--gold); }
+
+/* 视频 */
+.video-frame { background:var(--night); padding:.6rem; border:1px solid var(--line); margin:1.5rem 0; }
+.video-frame video { width:100%; display:block; }
+.video-caption { color:var(--ink-soft); font-size:.8rem; text-align:center; margin-top:.6rem; }
+
+/* 照片位 */
+.photo-slot {
+  border:1px dashed var(--line); background:var(--paper-2);
+  padding:2.5rem 1rem; text-align:center; color:var(--ink-soft);
+  font-size:.85rem; margin:1.2rem 0; letter-spacing:.1em;
+}
+.photo-slot img { width:100%; display:block; }
+
+/* 预言柜（批改区封存模糊，明年开柜删除 blur） */
+.prophecy-box { border:1px solid var(--line); background:#fffdf7; padding:1.5rem 1.4rem; margin:1.5rem 0; }
+.prophecy-box .grade {
+  margin-top:1.2rem; padding-top:1rem; border-top:1px dashed var(--line);
+  color:var(--ink-soft); font-size:.85rem; min-height:3em;
+  filter:blur(5px); user-select:none;
+}
+
+/* 信件 */
+.letter {
+  font-family:"Noto Serif SC","Songti SC","STSong",serif;
+  font-size:1rem; line-height:2.2; white-space:pre-wrap; padding:1rem .2rem;
+}
+
+/* 布展中 */
+.under-construction { text-align:center; padding:3rem 0; color:var(--ink-soft); }
+.under-construction .icon { font-size:2.2rem; margin-bottom:1rem; }
+
+footer { text-align:center; color:var(--ink-soft); font-size:.75rem; padding:3rem 0 5rem; letter-spacing:.15em; }
+
+@media (min-width:640px) {
+  .museum-head h1 { font-size:2.1rem; }
+  .hall-head h2 { font-size:1.7rem; }
+}
+</style>
+</head>
+<body>
+
+<!-- 密码门。换密码方法：
+     1. 在任意 https 网页按 F12 打开控制台，粘贴回车：
+        crypto.subtle.digest('SHA-256', new TextEncoder().encode('你的新密码')).then(b=>console.log([...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join('')))
+     2. 把输出的 64 位字符串替换到下方 JS 里的 GATE_HASH。 -->
+<div id="gate">
+  <p class="gate-title serif">我们的博物馆</p>
+  <p class="gate-sub">本馆实行预约参观制，请输入暗号</p>
+  <form id="gate-form" autocomplete="off">
+    <input id="gate-input" type="password" placeholder="· · · · · ·" aria-label="暗号">
+    <button type="submit">入 馆</button>
+    <p class="gate-error" id="gate-error"></p>
+  </form>
+  <p class="gate-hint">提示：只有一个人知道答案。</p>
+</div>
+
+<!-- 首访引导横幅（首次解锁时从顶部滑入） -->
+<div id="welcome-banner">欢迎入馆 · 今日特展：第 1 年</div>
+
+<div id="museum" hidden>
+
+  <header class="museum-head">
+    <h1>我们的博物馆</h1>
+    <p class="motto">OUR MUSEUM · 开馆于 <span id="anniversary-date">2026.11.20</span></p>
+  </header>
+
+  <!-- 新增展厅后在这里加一行 <a href="#yearN">第N年</a> -->
+  <nav>
+    <a href="#hall">大厅</a>
+    <a href="#permanent">常设展</a>
+    <a href="#year1">第一年</a>
+    <a href="#chapter3">第三章</a>
+  </nav>
+
+  <!-- ════ 第一章 · 大厅 ════ -->
+  <section class="hall" id="hall">
+    <div class="hall-head">
+      <p class="hall-no">CHAPTER Ⅰ</p>
+      <h2>大厅</h2>
+      <p class="hall-date">本馆已开馆 <span id="museum-days">…</span> 天</p>
+    </div>
+
+    <div class="placard">
+      <p class="placard-title">馆长致辞</p>
+      <p style="font-size:.95rem">
+        欢迎来到这个世界上规模最小、门票最贵（一个你）的博物馆。
+        这里只收藏一种展品：我们。每一件展品不可复制、永不外借、谢绝还价。
+        参观不限时，出口在你心里。
+      </p>
+    </div>
+
+    <div class="placard">
+      <p class="placard-title">参观须知</p>
+      <ul class="rules">
+        <li>馆内禁止吵架，违者罚抱十分钟；情节严重的，加时。</li>
+        <li>展品可以拍照，但禁止嫌弃摄影师（也就是我）。</li>
+        <li>请勿触摸展品——除非你摸的是我的手。</li>
+        <li>闭馆时间为 never，欢迎随时到访。</li>
+        <li>每年纪念日开一个新展厅，终身展期，概不退票。</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ════ 常设展厅（十年不撤的"地基"）════ -->
+  <section class="hall" id="permanent">
+    <div class="hall-head">
+      <p class="hall-no">PERMANENT COLLECTION</p>
+      <h2>常设展厅</h2>
+      <p class="hall-date">本馆基石 · 不设撤展日期</p>
+    </div>
+
+    <div class="placard">
+      <p class="placard-title">展品 · 初见</p>
+      <!-- ★ 填上你们第一次见面的日期、地点、天气、心情 -->
+      <p style="font-size:.95rem">
+        第一次见面的时间：__________<br>
+        第一次见面的地点：__________<br>
+        那一天天气：__________ · 我当时的心情：__________
+      </p>
+    </div>
+
+    <div class="placard">
+      <p class="placard-title">镇馆之宝 · 甲</p>
+      <!-- ★ 各自选一件代表自己的小物件拍照上传 OSS 后替换占位框 -->
+      <div class="photo-slot">他的镇馆之宝 · 待上墙</div>
+    </div>
+
+    <div class="placard">
+      <p class="placard-title">镇馆之宝 · 乙</p>
+      <div class="photo-slot">她的镇馆之宝 · 待上墙</div>
+    </div>
+
+    <div class="placard">
+      <p class="placard-title">我们的一小步</p>
+      <!-- ★ 手绘/截图一张"意义地图"：标出对你们有意义的地点 -->
+      <div class="photo-slot">意义地图 · 待绘制</div>
+    </div>
+  </section>
+
+  <!-- ════ 第二章 · 第 1 年展厅 ════ -->
+  <section class="hall" id="year1">
+    <div class="hall-head">
+      <p class="hall-no">CHAPTER Ⅱ · YEAR ONE</p>
+      <h2>第 1 年展厅</h2>
+      <p class="hall-date">展期：第 1 年</p>
+    </div>
+
+    <div class="placard">
+      <p class="placard-title">展品 Ⅰ · 年度影像</p>
+      <div class="video-frame">
+        <!-- ★ 视频录好后替换 src 和 poster 为你的 OSS 地址（公共读，mp4/H.264）
+             ★ 复刻传统：视频结尾定格一张同姿势合照，明年复刻今年的姿势 -->
+        <video controls playsinline preload="metadata"
+               poster="https://你的bucket.oss-cn-城市.aliyuncs.com/封面.jpg">
+          <source src="https://你的bucket.oss-cn-城市.aliyuncs.com/year1.mp4" type="video/mp4">
+          你的浏览器不支持视频播放。
+        </video>
+      </div>
+      <p class="video-caption">《我们》· 第 1 年 · 导演：我 · 主演：我们</p>
+    </div>
+
+    <div class="placard">
+      <p class="placard-title">展品 Ⅱ · 精选照片</p>
+      <!-- 有照片后换成 <img src="OSS地址.jpg" alt="说明"> -->
+      <div class="photo-slot">照片位 Ⅰ · 待上墙</div>
+      <div class="photo-slot">照片位 Ⅱ · 待上墙</div>
+      <div class="photo-slot">照片位 Ⅲ · 待上墙</div>
+    </div>
+
+    <div class="prophecy-box">
+      <p class="placard-title serif" style="color:var(--gold);font-size:.95rem">展品 Ⅲ · 预言柜</p>
+      <p style="font-size:.93rem">
+        今年我们在此写下对未来的预言，封存一年。明年纪念日开柜批改，对错都作数。
+      </p>
+      <!-- ★ 每年更新这里 -->
+      <p style="margin-top:1rem;font-family:'Noto Serif SC','Songti SC',serif">
+        预言①：____________________<br>
+        预言②：____________________<br>
+        预言③：____________________
+      </p>
+      <p class="grade">批改区（封存中，明年开柜）：待开柜。明年今日，由第 2 年的我们揭晓答案。</p>
+      <!-- ★ 明年开柜：换成批改结果，并删除 CSS 里 .prophecy-box .grade 的 filter:blur(5px); -->
+    </div>
+
+    <div class="placard">
+      <p class="placard-title">展品 Ⅳ · 一封信</p>
+      <!-- ★ 换成你的信 -->
+      <div class="letter">亲爱的：
+
+  见字如面。
+
+  这是我们在一起的第一年。这本书里的每一页我都翻过无数遍，
+  就像这一年里的每一天，我都想再过一遍。
+
+  我把我们的第一年做成了展厅。视频会旧，照片会黄，
+  但你可以每年今天回来一次，看新的展厅亮起灯。
+
+  明年的我现在还不在，但明年的你一定还在。
+  那就够了。
+
+          —— 第 1 年的我</div>
+    </div>
+  </section>
+
+  <!-- ════ 第三章 · 未定 ════ -->
+  <section class="hall" id="chapter3">
+    <div class="hall-head">
+      <p class="hall-no">CHAPTER Ⅲ · TO BE CONTINUED</p>
+      <h2>第三章 · 未定</h2>
+    </div>
+    <div class="under-construction">
+      <p class="icon">🚧</p>
+      <p>展厅正在布展中……</p>
+      <p style="font-size:.8rem;margin-top:.5rem">预计开展时间：下个纪念日</p>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════════════════════════════
+       ★★★ 每年新增展厅模板 ★★★
+       每年纪念日只需：
+       1. 复制下面这段被注释的 <section>…</section>，取消注释
+       2. yearN → year2、year3……（id 和注释里都要改）
+       3. "第 N 年展厅" → "第 2 年展厅"……
+       4. 换上新的视频、照片、预言、信
+       5. 在上面 <nav> 里加一行 <a href="#yearN">第N年</a>
+       6. Commit，完成。旧二维码自动看到新展厅。
+       ══════════════════════════════════════════════════════ -->
+  <!--
+  <section class="hall" id="yearN">
+    <div class="hall-head">
+      <p class="hall-no">CHAPTER Ⅳ · YEAR N</p>
+      <h2>第 N 年展厅</h2>
+      <p class="hall-date">展期：第 N 年</p>
+    </div>
+    <div class="placard">
+      <p class="placard-title">展品 Ⅰ · 年度影像</p>
+      <div class="video-frame">
+        <video controls playsinline preload="metadata"
+               poster="https://你的bucket.oss-cn-城市.aliyuncs.com/yearN-poster.jpg">
+          <source src="https://你的bucket.oss-cn-城市.aliyuncs.com/yearN.mp4" type="video/mp4">
+        </video>
+      </div>
+      <p class="video-caption">《我们》· 第 N 年</p>
+    </div>
+    <div class="placard">
+      <p class="placard-title">展品 Ⅱ · 精选照片</p>
+      <div class="photo-slot">照片位 Ⅰ · 待上墙</div>
+      <div class="photo-slot">照片位 Ⅱ · 待上墙</div>
+      <div class="photo-slot">照片位 Ⅲ · 待上墙</div>
+    </div>
+    <div class="prophecy-box">
+      <p class="placard-title serif" style="color:var(--gold);font-size:.95rem">展品 Ⅲ · 预言柜</p>
+      <p style="margin-top:1rem;font-family:'Noto Serif SC','Songti SC',serif">
+        预言①：____________________<br>
+        预言②：____________________
+      </p>
+      <p class="grade">批改区（明年填写）：待开柜。</p>
+    </div>
+    <div class="placard">
+      <p class="placard-title">展品 Ⅳ · 一封信</p>
+      <div class="letter">亲爱的：……</div>
+    </div>
+  </section>
+  -->
+  <!-- ══════════ 模板结束 ══════════ -->
+
+  <footer>
+    OUR MUSEUM · 终身展期 · 概不退票<br>
+    © 我们 · 开馆于 <span class="anniversary-copy">2026.11.20</span>
+  </footer>
+</div>
+
+<script>
+/* ═══ 密码门 ═══
+   占位密码为 museum（仅用于测试，务必更换）。
+   换密码：见 HTML 顶部密码门区域的说明。 */
+const GATE_HASH = "4919063719e8c3888b72036e074572cd6669e872a47cfb7f987a173a2e6f27b5";
+
+/* 纪念日：2026.11.20（开馆日） */
+const ANNIVERSARY = "2026-11-20";
+
+const gate      = document.getElementById("gate");
+const gateForm  = document.getElementById("gate-form");
+const gateInput = document.getElementById("gate-input");
+const gateError = document.getElementById("gate-error");
+const museum    = document.getElementById("museum");
+const banner    = document.getElementById("welcome-banner");
+
+async function sha256(text) {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+  return [...new Uint8Array(buf)].map(x => x.toString(16).padStart(2, "0")).join("");
+}
+
+gateForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const hash = await sha256(gateInput.value.trim());
+  if (hash === GATE_HASH) {
+    unlockMuseum();
+  } else {
+    gateError.textContent = "暗号不对，馆长拒绝放行。";
+    gateInput.value = "";
+    gateInput.focus();
+  }
+});
+
+/* 入馆动画：大门隐去 + 展厅亮灯 + 首访横幅 */
+function unlockMuseum() {
+  gate.classList.add("hidden");
+  museum.hidden = false;
+  requestAnimationFrame(() => requestAnimationFrame(() => museum.classList.add("lit")));
+  document.title = "我们的博物馆 · 大厅";
+
+  /* 首访引导横幅：只在他第一次入馆时显示 */
+  try {
+    if (!localStorage.getItem("museum-visited")) {
+      localStorage.setItem("museum-visited", Date.now());
+      setTimeout(() => banner.classList.add("show"), 1200);
+      setTimeout(() => banner.classList.remove("show"), 6500);
+    }
+  } catch (err) { /* 隐私模式等 localStorage 不可用时静默跳过 */ }
+
+  /* 若二维码带锚点（如 /#year1），解锁后自动滚动过去 */
+  if (location.hash) {
+    const target = document.querySelector(location.hash);
+    if (target) setTimeout(() => target.scrollIntoView({ behavior: "smooth" }), 1600);
+  }
+}
+
+/* 开馆天数自动计算 */
+(function () {
+  const start = new Date(ANNIVERSARY + "T00:00:00");
+  const days = Math.max(1, Math.floor((Date.now() - start) / 86400000));
+  const el = document.getElementById("museum-days");
+  if (el) el.textContent = days;
+  const d = ANNIVERSARY.replaceAll("-", ".");
+  document.querySelectorAll(".anniversary-copy").forEach(n => n.textContent = d);
+  const head = document.getElementById("anniversary-date");
+  if (head) head.textContent = d;
+})();
+
+/* 吸底导航高亮当前展厅 */
+(function () {
+  const links = [...document.querySelectorAll("nav a")];
+  const sections = links.map(a => document.querySelector(a.hash)).filter(Boolean);
+  const obs = new IntersectionObserver((entries) => {
+    entries.forEach(en => {
+      if (en.isIntersecting) {
+        links.forEach(a => a.classList.toggle("active", a.hash === "#" + en.target.id));
+      }
+    });
+  }, { rootMargin: "-40% 0px -55% 0px" });
+  sections.forEach(s => obs.observe(s));
+})();
+</script>
+</body>
+</html>
