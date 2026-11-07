@@ -573,15 +573,19 @@ function postToOSS(fields, file, onProgress) {
   });
 }
 async function ossDelete(key) {
+  /* 注意：浏览器禁止 JS 设置 Date 请求头，必须用 x-oss-date 参与签名 */
   const date = new Date().toUTCString();
-  const stringToSign = `DELETE\n\n\n${date}\n/${CONFIG.oss.bucket}/${key}`;
+  const stringToSign = `DELETE\n\n\n\nx-oss-date:${date}\n/${CONFIG.oss.bucket}/${key}`;
   const sig = await hmacSha1B64(CONFIG.oss.accessKeySecret, stringToSign);
   const r = await fetch(OSS_BASE + encodeURI(key), {
     method: "DELETE",
-    headers: { "Date": date, "Authorization": `OSS ${CONFIG.oss.accessKeyId}:${sig}` }
+    headers: { "x-oss-date": date, "Authorization": `OSS ${CONFIG.oss.accessKeyId}:${sig}` }
   });
-  if (!r.ok && r.status !== 204 && r.status !== 404)
-    throw new Error("OSS 返回 " + r.status);
+  if (!r.ok && r.status !== 204 && r.status !== 404) {
+    const body = await r.text().catch(() => "");
+    const m = body.match(/<Code>(.*?)<\/Code>/);
+    throw new Error("OSS " + r.status + (m ? " " + m[1] : ""));
+  }
 }
 /* 改写清单（自动备份旧版） */
 async function saveManifestWithBackup(manifest) {
