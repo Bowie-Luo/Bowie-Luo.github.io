@@ -217,6 +217,7 @@ footer { text-align:center; color:var(--ink-soft); font-size:.75rem; padding:3re
   .hall-head h2 { font-size:1.7rem; }
 }
 </style>
+<base target="_blank">
 </head>
 <body>
 
@@ -572,14 +573,57 @@ function postToOSS(fields, file, onProgress) {
     xhr.send(form);
   });
 }
+/* V4 签名辅助 */
+async function hmacSha256Raw(keyBytes, msg) {
+  const key = await crypto.subtle.importKey(
+    "raw", keyBytes, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  return new Uint8Array(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(msg)));
+}
+async function hmacSha256Hex(keyBytes, msg) {
+  const sig = await hmacSha256Raw(keyBytes, msg);
+  return [...sig].map(x => x.toString(16).padStart(2, "0")).join("");
+}
+async function sha256Hex(text) {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+  return [...new Uint8Array(buf)].map(x => x.toString(16).padStart(2, "0")).join("");
+}
+
+/* 删除：OSS V4 签名（新建 Bucket 强制 V4，全区域兼容） */
 async function ossDelete(key) {
-  /* 注意：浏览器禁止 JS 设置 Date 请求头，必须用 x-oss-date 参与签名 */
-  const date = new Date().toUTCString();
-  const stringToSign = `DELETE\n\n\n\nx-oss-date:${date}\n/${CONFIG.oss.bucket}/${key}`;
-  const sig = await hmacSha1B64(CONFIG.oss.accessKeySecret, stringToSign);
-  const r = await fetch(OSS_BASE + encodeURI(key), {
+  const now = new Date();
+  const pad = n => String(n).padStart(2, "0");
+  const dateStamp = `${now.getUTCFullYear()}${pad(now.getUTCMonth() + 1)}${pad(now.getUTCDate())}`;
+  const amzDate = `${dateStamp}T${pad(now.getUTCHours())}${pad(now.getUTCMinutes())}${pad(now.getUTCSeconds())}Z`;
+  const region = CONFIG.oss.endpoint.split(".")[0].replace(/^oss-/, "");
+  const host = `${CONFIG.oss.bucket}.${CONFIG.oss.endpoint}`;
+  const uri = "/" + key.split("/").map(encodeURIComponent).join("/");
+
+  const canonicalHeaders =
+    `host:${host}\n` +
+    `x-oss-content-sha256:UNSIGNED-PAYLOAD\n` +
+    `x-oss-date:${amzDate}\n`;
+  const signedHeaders = "host;x-oss-content-sha256;x-oss-date";
+  const canonicalRequest = [
+    "DELETE", uri, "", canonicalHeaders, signedHeaders, "UNSIGNED-PAYLOAD"
+  ].join("\n");
+  const scope = `${dateStamp}/${region}/oss/aliyun_v4_request`;
+  const stringToSign = [
+    "OSS4-HMAC-SHA256", amzDate, scope, await sha256Hex(canonicalRequest)
+  ].join("\n");
+
+  const kDate    = await hmacSha256Raw(new TextEncoder().encode("aliyun_v4" + CONFIG.oss.accessKeySecret), dateStamp);
+  const kRegion  = await hmacSha256Raw(kDate, region);
+  const kProduct = await hmacSha256Raw(kRegion, "oss");
+  const kSigning = await hmacSha256Raw(kProduct, "aliyun_v4_request");
+  const sig = await hmacSha256Hex(kSigning, stringToSign);
+
+  const r = await fetch(`https://${host}${uri}`, {
     method: "DELETE",
-    headers: { "x-oss-date": date, "Authorization": `OSS ${CONFIG.oss.accessKeyId}:${sig}` }
+    headers: {
+      "x-oss-date": amzDate,
+      "x-oss-content-sha256": "UNSIGNED-PAYLOAD",
+      "Authorization": `OSS4-HMAC-SHA256 Credential=${CONFIG.oss.accessKeyId}/${scope},Signature=${sig}`
+    }
   });
   if (!r.ok && r.status !== 204 && r.status !== 404) {
     const body = await r.text().catch(() => "");
